@@ -277,7 +277,7 @@ why each candidate region was kept or rejected.
 ### Tests
 
 ```bash
-.venv/bin/python tests/test_suite.py     # 52 checks, real data, no fixtures
+.venv/bin/python tests/test_suite.py     # 56 checks, real data, no fixtures
 ```
 
 Runs against the live database and live APIs. The only synthetic input is the
