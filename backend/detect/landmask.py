@@ -31,9 +31,29 @@ _MASK_CACHE_MAX = 8
 
 
 def _load(url: str, name: str) -> list:
-    """Fetch and cache one Natural Earth layer as a list of lon/lat rings."""
+    """Fetch and cache one Natural Earth layer as lon/lat rings.
+
+    Rings are stored as numpy arrays, not nested Python lists. Natural Earth
+    10m has ~480,000 coordinate pairs; as `[[lon, lat], ...]` that is ~84 MB of
+    Python objects held for the life of the process, which matters on a 512 MB
+    host. As float32 arrays it is under 5 MB.
+    """
     if name in _cache:
         return _cache[name]
+    # Prefer a compact .npz of already-converted rings. Parsing the 10 MB
+    # GeoJSON builds ~480,000 nested Python lists, and that transient spike -
+    # not the retained data - is what dominates peak memory. After the first
+    # run we never parse it again.
+    npz = config.CACHE_DIR / f"{name}.npz"
+    if npz.exists():
+        try:
+            with np.load(npz) as z:
+                rings = [z[k] for k in z.files]
+            _cache[name] = rings
+            return rings
+        except Exception:
+            npz.unlink(missing_ok=True)        # corrupt cache, rebuild below
+
     path = config.CACHE_DIR / f"{name}.geojson"
     if not path.exists():
         r = httpx.get(url, timeout=180.0, follow_redirects=True)
@@ -53,7 +73,14 @@ def _load(url: str, name: str) -> list:
             continue
         for poly in polys:
             if poly and poly[0]:
-                rings.append(poly[0])          # exterior ring only
+                arr = np.asarray(poly[0], dtype=np.float32)   # exterior ring
+                if arr.ndim == 2 and arr.shape[0] >= 3:
+                    rings.append(arr)
+    del data                                   # drop the parsed JSON promptly
+    try:
+        np.savez_compressed(npz, *rings)
+    except Exception as exc:
+        print(f"[landmask] could not cache {name}.npz ({exc})")
     _cache[name] = rings
     return rings
 
@@ -91,14 +118,15 @@ def build(bounds: tuple[float, float, float, float], shape: tuple[int, int],
 
     drawn = 0
     for ring in land_rings():
-        lons = [p[0] for p in ring]
-        lats = [p[1] for p in ring]
-        # Cheap bbox reject before touching every vertex.
-        if (max(lons) < lon_min or min(lons) > lon_max
-                or max(lats) < lat_min or min(lats) > lat_max):
+        # Cheap bbox reject before projecting every vertex.
+        lo = ring.min(axis=0)
+        hi = ring.max(axis=0)
+        if (hi[0] < lon_min or lo[0] > lon_max
+                or hi[1] < lat_min or lo[1] > lat_max):
             continue
-        pts = np.array([[(p[0] - lon_min) * sx, (lat_max - p[1]) * sy]
-                        for p in ring], dtype=np.int32)
+        pts = np.empty(ring.shape, dtype=np.int32)
+        pts[:, 0] = ((ring[:, 0] - lon_min) * sx).astype(np.int32)
+        pts[:, 1] = ((lat_max - ring[:, 1]) * sy).astype(np.int32)
         cv2.fillPoly(mask, [pts], 1)
         drawn += 1
 

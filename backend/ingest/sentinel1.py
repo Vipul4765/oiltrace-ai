@@ -13,6 +13,7 @@ Free, anonymous, and genuinely the same imagery an operational service uses.
 from __future__ import annotations
 
 import math
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -91,6 +92,15 @@ def _sign(href: str) -> str:
     rest = href.split("blob.core.windows.net/", 1)
     account = rest[0].split("//", 1)[1].split(".")[0]
     container = rest[1].split("/", 1)[0]
+    # account and container are interpolated into a URL path. They come from a
+    # STAC response rather than from a user, but validate anyway: a value
+    # containing "../" or a slash would redirect the token request elsewhere on
+    # the host. Azure names are lowercase alphanumeric with hyphens.
+    if not (re.fullmatch(r"[a-z0-9][a-z0-9-]{1,62}", account)
+            and re.fullmatch(r"[a-z0-9][a-z0-9-]{1,62}", container)):
+        raise ValueError(
+            f"refusing to sign: implausible storage account/container "
+            f"({account!r}/{container!r})")
     key = f"{account}/{container}"
     hit = _token_cache.get(key)
     if hit and hit[0] > time.time() + 60:
@@ -102,6 +112,14 @@ def _sign(href: str) -> str:
     exp = datetime.fromisoformat(d["msft:expiry"].replace("Z", "+00:00")).timestamp()
     _token_cache[key] = (exp, token)
     return f"{href}?{token}"
+
+
+# A read is float32 and the detector builds roughly a dozen intermediate arrays
+# of the same shape, so peak memory scales with pixel count. `max_pixels` caps
+# only the longest side, which a wide bbox slips straight past: a whole-world
+# request cost ~200 MB of extra RSS and would OOM a 512 MB free tier.
+# Measured with the current pipeline: 4.0M px -> +127 MB, 2.5M px -> +98 MB.
+MAX_TOTAL_PIXELS = 2_500_000
 
 
 def read_window(scene: Scene, bbox: tuple[float, float, float, float],
@@ -154,6 +172,12 @@ def read_window(scene: Scene, bbox: tuple[float, float, float, float],
             scale = max(1.0, max(win.width, win.height) / max_pixels)
             out_h = max(8, int(win.height / scale))
             out_w = max(8, int(win.width / scale))
+            # Second, independent cap on area: a wide bbox can stay under the
+            # per-side limit while still being enormous.
+            if out_h * out_w > MAX_TOTAL_PIXELS:
+                shrink = math.sqrt(out_h * out_w / MAX_TOTAL_PIXELS)
+                out_h = max(8, int(out_h / shrink))
+                out_w = max(8, int(out_w / shrink))
             arr = src.read(1, window=win, out_shape=(out_h, out_w),
                            resampling=Resampling.average).astype(np.float32)
             wb = rasterio.windows.bounds(win, src.transform)

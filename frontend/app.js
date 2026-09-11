@@ -652,6 +652,20 @@ async function renderReports(){
       filled in.</div>`;
 }
 
+/** Quote a value for CSV, defusing spreadsheet formula injection.
+ *
+ *  Same untrusted AIS text as the XSS problem, different sink. A vessel named
+ *  `=cmd|'/c calc'!A1` lands in the exported file, and Excel or LibreOffice
+ *  evaluates any cell beginning with = + - @ or a control character when the
+ *  file is opened. Prefixing with an apostrophe makes the spreadsheet treat it
+ *  as literal text.
+ */
+function csvCell(v){
+  let out = String(v ?? "");
+  if(/^[=+\-@\t\r]/.test(out)) out = "'" + out;
+  return `"${out.replace(/"/g, '""')}"`;
+}
+
 function download(name, text, type){
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], { type }));
@@ -819,7 +833,7 @@ $("rep-csv").onclick = async () => {
     cols.map(c => {
       let v = r[c];
       if(c === "detected_at" && v) v = new Date(v*1000).toISOString();
-      return `"${String(v ?? "").replace(/"/g,'""')}"`;
+      return csvCell(v);
     }).join(","))).join("\n");
   download("oiltrace-incidents.csv", csv, "text/csv");
   toast(`${rows.length} incidents exported.`, "ok", "CSV downloaded");
