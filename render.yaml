@@ -1,0 +1,31 @@
+# Render Blueprint.  Dashboard -> New -> Blueprint -> select this repo.
+#
+# NOTE ON PERSISTENCE: Render's free plan does NOT support persistent disks, so
+# on `plan: free` the SQLite database lives on an ephemeral filesystem and is
+# wiped on every redeploy and every idle spin-down. That is survivable here -
+# incidents are re-derived from real satellite scenes and AIS re-accumulates -
+# but AIS history is what attribution needs, so a spun-down free instance will
+# have nothing to correlate against for a while after it wakes.
+#
+# For durable storage switch to `plan: starter` and uncomment the disk block.
+services:
+  - type: web
+    name: oiltrace-ai
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: OILTRACE_DATA_DIR
+        value: /data
+      - key: OILTRACE_REGION
+        value: north-sea          # a region with real live AIS coverage
+      - key: AIS_SOURCE
+        value: live
+      - key: AISSTREAM_API_KEY
+        sync: false               # set in the dashboard; never committed
+      - key: GFW_API_TOKEN
+        sync: false
+    # disk:                       # requires plan: starter or above
+    #   name: oiltrace-data
+    #   mountPath: /data
+    #   sizeGB: 1

@@ -12,9 +12,14 @@ load_dotenv(ROOT / ".env")
 # --- storage -----------------------------------------------------------------
 DATA_DIR = ROOT / "data"
 DATA_DIR.mkdir(exist_ok=True)
+# OILTRACE_DATA_DIR lets a host point storage at a mounted persistent disk.
+# Without it, a container filesystem is ephemeral and every redeploy starts
+# from an empty database.
+DATA_DIR = Path(os.getenv("OILTRACE_DATA_DIR", DATA_DIR))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = Path(os.getenv("OILTRACE_DB", DATA_DIR / "oiltrace.db"))
 CACHE_DIR = DATA_DIR / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- area of interest --------------------------------------------------------
 # Free AIS coverage is regional, so the AOI is a switchable profile rather than

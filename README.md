@@ -43,6 +43,45 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 ---
 
+## Deploying
+
+The repo ships a `Dockerfile` that runs anywhere, plus configs for the three
+common free hosts. The image is ~400 MB and binds `$PORT`, so any container
+host works.
+
+```bash
+docker build -t oiltrace-ai .
+docker run -p 8000:8000 -v oiltrace-data:/data \
+  -e AISSTREAM_API_KEY=... -e GFW_API_TOKEN=... \
+  -e OILTRACE_REGION=north-sea oiltrace-ai
+```
+
+**Render** - `render.yaml` is a Blueprint: New -> Blueprint -> pick this repo.
+Set `AISSTREAM_API_KEY` and `GFW_API_TOKEN` in the dashboard (they are marked
+`sync: false`, so they are never committed).
+
+**Fly.io** - `flyctl launch --no-deploy`, then
+`flyctl secrets set AISSTREAM_API_KEY=... GFW_API_TOKEN=...`,
+`flyctl volumes create oiltrace_data --size 1`, then `flyctl deploy`.
+
+**Railway** - New Project -> Deploy from GitHub. It reads the `Dockerfile`
+automatically; add the two secrets as variables.
+
+### Free-tier caveats, stated plainly
+
+1. **Free instances sleep.** Render's free plan spins down after ~15 minutes of
+   inactivity, and the AIS collector stops with it. Attribution needs AIS from
+   the 24 h *before* a satellite pass, so a freshly woken instance has nothing
+   to correlate against until history rebuilds. Fly with
+   `min_machines_running = 1` avoids this.
+2. **Free plans have no persistent disk on Render**, so the SQLite database is
+   wiped on redeploy. Incidents are re-derivable from real scenes; AIS history
+   is not. Use Fly with a volume, or a paid Render plan, if that matters.
+3. **Set the region to one with real AIS coverage.** The default deploy config
+   uses `north-sea`. Deploying with `OILTRACE_REGION=mumbai` gives you real
+   satellite imagery and no vessel tracks, because free AIS does not cover
+   India (see the coverage table above).
+
 ## What is real
 
 Every layer below runs on genuine data. There is no simulation in the default
