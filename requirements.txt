@@ -4,7 +4,7 @@ websockets==14.1
 httpx==0.28.1
 numpy==1.26.4
 opencv-python-headless==4.10.0.84
-shapely==2.0.6
-pydantic==2.10.4
-pydantic-settings==2.7.0
+# Reads Sentinel-1 GRD over HTTP range requests and warps radar geometry via
+# GCPs. Missing this is not a soft failure: scene fetching dies outright.
+rasterio==1.3.11
 python-dotenv==1.0.1

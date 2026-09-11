@@ -8,8 +8,15 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# opencv-python-headless and rasterio ship manylinux wheels with their native
-# libraries bundled, so no GDAL or libGL packages are needed here.
+# rasterio's manylinux wheel bundles GDAL, PROJ, GEOS and friends, but it still
+# links against the system libexpat, which python:*-slim does not ship. Without
+# it `import rasterio` dies with "libexpat.so.1: cannot open shared object file"
+# and every Sentinel-1 fetch fails at the pixel-read step.
+# opencv-python-headless needs no libGL, which is why the headless build is used.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libexpat1 \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
