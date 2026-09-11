@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OilTrace AI - Oil Spill Detection &amp; Vessel Attribution</title>
+<link rel="stylesheet" href="/static/vendor/leaflet.css">
+<style>
+:root{
+  --navy:#0e1c33; --navy-2:#16294a; --ink:#0f172a; --muted:#64748b; --faint:#94a3b8;
+  --line:#e2e8f0; --bg:#f5f7fb; --card:#fff; --blue:#2563eb; --blue-soft:#eff4ff;
+  --red:#e11d48; --amber:#f59e0b; --green:#10b981; --oil:#f97316;
+  --shadow:0 1px 2px rgba(15,23,42,.06),0 4px 16px rgba(15,23,42,.05);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.app{display:flex;min-height:100vh}
+
+/* ---------- sidebar ---------- */
+.sidebar{width:236px;flex:0 0 236px;background:var(--navy);color:#c7d2e4;
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{padding:20px 22px 18px;border-bottom:1px solid rgba(255,255,255,.07)}
+.brand h1{margin:0;font-size:18px;font-weight:700;color:#fff;letter-spacing:-.3px;
+  display:flex;align-items:center;gap:9px;white-space:nowrap}
+.brand h1 svg{width:22px;height:22px;flex:0 0 22px}
+.brand .tag{margin:5px 0 0 31px;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:#7d92b5}
+nav{padding:12px 12px;flex:1}
+nav a{display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:9px;
+  color:#b9c7dd;text-decoration:none;font-size:13.5px;font-weight:500;margin-bottom:2px}
+nav a:hover{background:rgba(255,255,255,.06);color:#fff}
+nav a.active{background:var(--blue);color:#fff;box-shadow:0 2px 10px rgba(37,99,235,.35)}
+nav svg{width:17px;height:17px;flex:0 0 17px}
+.sysbar{padding:14px 22px;border-top:1px solid rgba(255,255,255,.07);font-size:11.5px;color:#7d92b5}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);
+  margin-right:7px;box-shadow:0 0 0 3px rgba(16,185,129,.18)}
+.dot.sim{background:var(--amber);box-shadow:0 0 0 3px rgba(245,158,11,.18)}
+
+/* ---------- header ---------- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+header{background:#fff;border-bottom:1px solid var(--line);padding:15px 26px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px}
+header h2{margin:0;font-size:20px;font-weight:650;letter-spacing:-.3px}
+header p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.hdr-right{display:flex;align-items:center;gap:14px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 14px;
+  font:inherit;font-size:13px;font-weight:550;cursor:pointer;color:var(--ink)}
+.btn:hover{background:#f8fafc;border-color:#cbd5e1}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:#1d4ed8}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.user{display:flex;align-items:center;gap:10px;padding-left:14px;border-left:1px solid var(--line)}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;
+  display:grid;place-items:center;font-size:12px;font-weight:600}
+.user b{display:block;font-size:13px;font-weight:600}
+.user span{font-size:11.5px;color:var(--muted)}
+
+/* ---------- layout ---------- */
+.content{padding:18px 22px 26px;display:flex;flex-direction:column;gap:16px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:13px;
+  box-shadow:var(--shadow)}
+.kpi{padding:16px 18px;display:flex;align-items:center;gap:14px}
+.kpi .ico{width:44px;height:44px;flex:0 0 44px;border-radius:11px;display:grid;place-items:center}
+.kpi .ico svg{width:21px;height:21px}
+.kpi .lbl{font-size:12.5px;color:var(--muted);font-weight:500}
+.kpi .val{font-size:27px;font-weight:700;letter-spacing:-.8px;line-height:1.15}
+.kpi .sub{font-size:11.5px;color:var(--faint)}
+
+.mid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,.62fr) minmax(0,.72fr);gap:16px}
+.bottom{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:13px;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+.panel > h3{margin:0;padding:14px 17px 12px;font-size:14px;font-weight:650;
+  display:flex;align-items:center;gap:8px;justify-content:space-between}
+.panel > h3 .l{display:flex;align-items:center;gap:8px}
+.panel > h3 svg{width:16px;height:16px}
+.panel .body{padding:0 17px 16px;overflow:auto}
+.link{font-size:12px;color:var(--blue);font-weight:550;cursor:pointer;text-decoration:none}
+.pill{font-size:10.5px;font-weight:650;padding:3px 9px;border-radius:20px;
+  background:#fff1f2;color:var(--red);border:1px solid #fecdd3}
+.pill.ok{background:#ecfdf5;color:#047857;border-color:#a7f3d0}
+
+/* ---------- map ---------- */
+#map{flex:1;min-height:470px;width:100%;background:#dbe6f0}
+.map-wrap{position:relative;flex:1;display:flex;flex-direction:column}
+.map-tools{position:absolute;z-index:500;top:12px;left:12px;display:flex;
+  background:#fff;border-radius:9px;box-shadow:0 2px 10px rgba(15,23,42,.18);overflow:hidden}
+.map-tools button{border:0;background:#fff;padding:7px 15px;font:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer;color:var(--muted)}
+.map-tools button.on{background:var(--blue);color:#fff}
+.legend{position:absolute;z-index:500;left:12px;bottom:22px;background:rgba(255,255,255,.96);
+  border-radius:10px;padding:11px 13px;font-size:11.5px;box-shadow:0 2px 12px rgba(15,23,42,.2);
+  line-height:1.85}
+.legend i{display:inline-block;width:16px;margin-right:7px;text-align:center;vertical-align:-1px}
+.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px}
+.vessel-ico div{transform-origin:50% 50%}
+
+/* ---------- incident details ---------- */
+.kv{padding:11px 0;border-bottom:1px solid #f1f5f9}
+.kv:last-child{border-bottom:0}
+.kv .k{font-size:11.5px;color:var(--muted);margin-bottom:2px}
+.kv .v{font-size:13.5px;font-weight:600}
+.sec-title{font-size:13px;font-weight:650;margin:14px 0 2px;padding-top:13px;
+  border-top:1px solid var(--line)}
+.meter{height:7px;border-radius:5px;background:#eef2f7;overflow:hidden;margin-top:7px}
+.meter i{display:block;height:100%;border-radius:5px;
+  background:linear-gradient(90deg,#60a5fa,var(--blue))}
+
+/* ---------- candidates ---------- */
+.cand{display:flex;align-items:center;gap:11px;padding:10px 8px;border-radius:10px;
+  cursor:pointer;border:1px solid transparent}
+.cand:hover{background:#f8fafc;border-color:var(--line)}
+.cand.sel{background:var(--blue-soft);border-color:#bfdbfe}
+.rank{width:25px;height:25px;flex:0 0 25px;border-radius:50%;display:grid;place-items:center;
+  font-size:11.5px;font-weight:700;background:#f1f5f9;color:var(--muted)}
+.cand:first-child .rank{background:#fef3c7;color:#b45309}
+.cand .nm{flex:1;min-width:0}
+.cand .nm b{display:block;font-size:13px;font-weight:600;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.cand .nm span{font-size:11px;color:var(--faint)}
+.score{font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:7px}
+.s-hi{background:#fee2e2;color:#b91c1c}
+.s-md{background:#ffedd5;color:#c2410c}
+.s-lo{background:#f1f5f9;color:#475569}
+
+/* ---------- alerts + timeline ---------- */
+.alert{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px}
+.alert:last-child{border-bottom:0}
+.alert .bullet{width:8px;height:8px;border-radius:50%;margin-top:5px;flex:0 0 8px}
+.alert time{display:block;font-size:10.5px;color:var(--faint);margin-top:1px}
+.tl{position:relative;padding-left:20px}
+.tl::before{content:"";position:absolute;left:5px;top:6px;bottom:8px;width:2px;background:var(--line)}
+.tl .step{position:relative;padding:0 0 15px}
+.tl .step::before{content:"";position:absolute;left:-19px;top:3px;width:11px;height:11px;
+  border-radius:50%;background:#fff;border:2.5px solid var(--blue)}
+.tl .step b{display:block;font-size:12.5px;font-weight:600}
+.tl .step span{font-size:11px;color:var(--faint)}
+.env{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f1f5f9}
+.env:last-child{border-bottom:0}
+.env .ico{width:36px;height:36px;flex:0 0 36px;border-radius:10px;background:#f1f5f9;
+  display:grid;place-items:center}
+.env .ico svg{width:17px;height:17px;color:var(--muted)}
+.env .k{font-size:11.5px;color:var(--muted)}
+.env .v{font-size:13.5px;font-weight:650}
+.mini{width:100%;height:150px;display:block;background:#f8fafc;border-radius:9px}
+.note{font-size:11px;color:var(--faint);padding:9px 17px 14px;line-height:1.55}
+.banner{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:11px;
+  padding:11px 15px;font-size:12.5px;display:flex;gap:10px;align-items:flex-start}
+.banner b{font-weight:650}
+.prov{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 15px;
+  box-shadow:var(--shadow)}
+.prov-head{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin-bottom:10px}
+.prov-head b{font-size:13px}
+.prov-head .verdict{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px}
+.v-real{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
+.v-mixed{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
+.prov-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
+.lyr{border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#fcfcfd}
+.lyr .t{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;
+  font-weight:600;margin-bottom:3px}
+.lyr .s{font-size:11.5px;font-weight:600;color:#0f172a;line-height:1.35}
+.lyr .n{font-size:10.5px;color:var(--faint);margin-top:3px;line-height:1.4}
+.led{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+.led.on{background:var(--green);box-shadow:0 0 0 3px rgba(16,185,129,.16)}
+.led.off{background:var(--amber);box-shadow:0 0 0 3px rgba(245,158,11,.16)}
+#region-select{font-weight:600;cursor:pointer;max-width:250px}
+.nav-n{margin-left:auto;font-size:10.5px;background:rgba(255,255,255,.14);
+  padding:1px 7px;border-radius:10px;font-weight:700}
+/* an empty badge still painted a stray pill */
+.nav-n:empty{display:none}
+nav a.active .nav-n{background:rgba(255,255,255,.25)}
+.chk{font-size:11.5px;color:var(--muted);font-weight:500;display:inline-flex;
+  align-items:center;gap:5px;cursor:pointer;margin-left:9px}
+table.dt{width:100%;border-collapse:collapse;font-size:12.5px}
+table.dt th{text-align:left;font-size:11px;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--faint);font-weight:650;padding:8px 10px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff}
+table.dt td{padding:9px 10px;border-bottom:1px solid #f1f5f9}
+table.dt tbody tr{cursor:pointer}
+table.dt tbody tr:hover{background:#f8fafc}
+table.dt td.num{text-align:right;font-variant-numeric:tabular-nums}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+.btag{font-size:10.5px;font-weight:650;padding:2px 8px;border-radius:20px;
+  background:#f1f5f9;color:#475569;white-space:nowrap}
+.rep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.rep-card{border:1px solid var(--line);border-radius:11px;padding:13px 15px}
+.rep-card h4{margin:0 0 9px;font-size:12px;color:var(--muted);font-weight:650;
+  text-transform:uppercase;letter-spacing:.05em}
+.srow{display:flex;justify-content:space-between;gap:12px;padding:6px 0;
+  border-bottom:1px solid #f1f5f9;font-size:12.5px}
+.srow:last-child{border-bottom:0}
+.srow b{font-weight:650}
+#view-map .panel{display:flex;flex-direction:column}
+@media(max-width:1100px){.prov-grid{grid-template-columns:repeat(2,1fr)}}
+.ev{font-size:12px;color:#334155;padding:7px 0 7px 16px;position:relative;line-height:1.55}
+.ev::before{content:"";position:absolute;left:2px;top:12px;width:5px;height:5px;
+  border-radius:50%;background:var(--blue)}
+.empty{padding:26px 4px;text-align:center;color:var(--faint);font-size:12.5px}
+.bars{display:grid;gap:7px;margin-top:4px}
+.bar{display:grid;grid-template-columns:74px 1fr 34px;align-items:center;gap:9px;font-size:11.5px}
+.bar .t{color:var(--muted);text-transform:capitalize}
+.bar .g{height:6px;border-radius:4px;background:#eef2f7;overflow:hidden}
+.bar .g i{display:block;height:100%;background:var(--blue);border-radius:4px}
+.bar .n{text-align:right;font-weight:650;color:#475569}
+/* ---------- toasts ---------- */
+#toasts{position:fixed;right:18px;bottom:18px;z-index:9999;display:flex;
+  flex-direction:column;gap:10px;max-width:390px}
+.toast{background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);
+  border-radius:11px;padding:12px 15px;box-shadow:0 8px 30px rgba(15,23,42,.16);
+  font-size:12.5px;opacity:0;transform:translateY(10px) scale(.98);
+  transition:opacity .22s ease,transform .22s cubic-bezier(.2,.8,.2,1)}
+.toast.in{opacity:1;transform:none}
+.toast.out{opacity:0;transform:translateY(-6px) scale(.98)}
+.toast.ok{border-left-color:var(--green)}
+.toast.warn{border-left-color:var(--amber)}
+.toast.err{border-left-color:var(--red)}
+.toast b{display:block;font-weight:650;margin-bottom:2px}
+.toast .x{position:absolute;top:8px;right:11px;cursor:pointer;color:var(--faint);
+  font-size:15px;line-height:1}
+.toast{position:relative;padding-right:30px}
+
+/* ---------- job progress ---------- */
+#job{position:fixed;right:18px;bottom:18px;z-index:9998;width:330px;background:#fff;
+  border:1px solid var(--line);border-radius:13px;box-shadow:0 10px 36px rgba(15,23,42,.18);
+  padding:15px 17px;opacity:0;transform:translateY(12px);pointer-events:none;
+  transition:opacity .25s ease,transform .25s cubic-bezier(.2,.8,.2,1)}
+#job.in{opacity:1;transform:none;pointer-events:auto}
+#job h4{margin:0 0 3px;font-size:13px;font-weight:650}
+#job .sub{font-size:11.5px;color:var(--muted);min-height:15px}
+#job .bar{height:6px;border-radius:4px;background:#eef2f7;overflow:hidden;margin:11px 0 10px}
+#job .bar i{display:block;height:100%;border-radius:4px;width:0;
+  background:linear-gradient(90deg,#60a5fa,var(--blue));
+  transition:width .45s cubic-bezier(.3,.9,.3,1)}
+#job .st{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:3px 0;
+  color:var(--faint);transition:color .2s}
+#job .st.active{color:var(--ink);font-weight:600}
+#job .st.done{color:var(--muted)}
+#job .st .m{width:14px;text-align:center;flex:0 0 14px}
+#job .st.active .m{color:var(--blue)}
+#job .st.done .m{color:var(--green)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.45);
+  border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;
+  vertical-align:-2px;margin-right:7px}
+.btn .spin{border-color:rgba(15,23,42,.25);border-top-color:var(--ink)}
+.btn.primary .spin{border-color:rgba(255,255,255,.45);border-top-color:#fff}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---------- smooth content swaps ---------- */
+.view{animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.swap{transition:opacity .18s ease}
+.swap.loading{opacity:.45}
+.skel{background:linear-gradient(90deg,#f1f5f9 25%,#e8edf3 37%,#f1f5f9 63%);
+  background-size:400% 100%;animation:sh 1.3s ease infinite;border-radius:7px}
+@keyframes sh{0%{background-position:100% 50%}100%{background-position:0 50%}}
+.kpi .val{transition:opacity .2s ease}
+
+@media(max-width:1400px){.mid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .mid .panel:first-child{grid-column:1/-1}.bottom{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}
+  .mid,.bottom{grid-template-columns:1fr}.sidebar{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1><svg viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round"><path d="M2 7c2.5 0 2.5 2 5 2s2.5-2 5-2 2.5 2 5 2 2.5-2 5-2"/><path d="M2 13c2.5 0 2.5 2 5 2s2.5-2 5-2 2.5 2 5 2 2.5-2 5-2"/><path d="M2 19c2.5 0 2.5 2 5 2s2.5-2 5-2 2.5 2 5 2 2.5-2 5-2"/></svg>OilTrace AI</h1>
+      <div class="tag">Detect &middot; Trace &middot; Protect</div>
+    </div>
+    <nav>
+      <a data-view="dashboard" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>Dashboard</a>
+      <a data-view="incidents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>Incidents<span class="nav-n" id="nav-inc"></span></a>
+      <a data-view="vessels"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l9 4 9-4M4 12l8-9 8 9-8 4z"/></svg>Vessels<span class="nav-n" id="nav-ves"></span></a>
+      <a data-view="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4L3 7v13l6-3 6 3 6-3V4l-6 3z"/><path d="M9 4v13M15 7v13"/></svg>Map</a>
+      <a data-view="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg>Reports</a>
+      <a data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.1A1.6 1.6 0 006 19.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.6 1.6 0 003 14H3a2 2 0 110-4h.1A1.6 1.6 0 004.6 6l-.1-.1a2 2 0 012.8-2.8l.1.1A1.6 1.6 0 0010 3V3a2 2 0 114 0v.1a1.6 1.6 0 002.7 1.1l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00 .9 2.7H21a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></svg>Settings</a>
+    </nav>
+    <div class="sysbar">
+      <div><span class="dot" id="sysdot"></span><span id="systext">Connecting&hellip;</span></div>
+      <div style="margin-top:5px" id="sysais"></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header>
+      <div>
+        <h2>Oil Spill Monitoring &amp; Vessel Attribution</h2>
+        <p>Satellite-based detection and AIS correlation for a cleaner ocean</p>
+      </div>
+      <div class="hdr-right">
+        <select class="btn" id="region-select" title="Area of interest"></select>
+        <button class="btn" id="btn-refresh">Refresh</button>
+        <button class="btn primary" id="btn-sentinel" title="Fetch the newest real Sentinel-1 scene">Fetch Sentinel-1</button>
+        <div class="user">
+          <div class="avatar">OT</div>
+          <div><b>OilTrace AI</b><span id="build-region">--</span></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+      <div id="banner-slot"></div>
+
+      <div class="view" id="view-dashboard">
+      <div class="kpis" id="kpis"></div>
+
+      <div class="mid">
+        <div class="panel" id="map-slot">
+          <div class="map-wrap">
+            <div class="map-tools">
+              <button id="t-map" class="on">Map</button><button id="t-sat">Satellite</button>
+            </div>
+            <div id="map"></div>
+            <div class="legend">
+              <div><i>&#128308;</i>Oil spill (detected)</div>
+              <div><i><span class="swatch" style="background:#fb923c;opacity:.55"></span></i>Back-drift cone</div>
+              <div><i><span class="swatch" style="background:#a855f7"></span></i>Probable source region</div>
+              <div><i>&#9654;</i>Vessel (AIS)</div>
+              <div><i>&#9650;</i>Candidate vessel track</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3><span class="l"><svg viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>Incident Details</span>
+            <span class="pill" id="inc-status">&mdash;</span></h3>
+          <div class="body" id="incident-body"><div class="empty">No incident selected</div></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+          <div class="panel" style="flex:1">
+            <h3><span class="l">Top Candidate Vessels</span><span class="link" id="cand-count"></span></h3>
+            <div class="body" id="candidates"><div class="empty">&mdash;</div></div>
+          </div>
+          <div class="panel">
+            <h3><span class="l">Recent Alerts</span></h3>
+            <div class="body" id="alerts" style="max-height:190px"><div class="empty">&mdash;</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom">
+        <div class="panel">
+          <h3><span class="l">Spill Timeline</span></h3>
+          <div class="body"><div class="tl" id="timeline"><div class="empty">&mdash;</div></div></div>
+        </div>
+        <div class="panel">
+          <h3><span class="l">Spill Trajectory (Backward Drift)</span></h3>
+          <div class="body"><svg class="mini" id="mini-drift"></svg>
+            <div class="note" style="padding:9px 0 0" id="drift-note"></div></div>
+        </div>
+        <div class="panel">
+          <h3><span class="l">Environmental Conditions</span></h3>
+          <div class="body" id="env"><div class="empty">&mdash;</div></div>
+        </div>
+        <div class="panel">
+          <h3><span class="l">Why This Vessel</span><span class="link" id="why-name"></span></h3>
+          <div class="body" id="why"><div class="empty">Select a candidate</div></div>
+        </div>
+      </div>
+      </div><!-- /view-dashboard -->
+
+      <div class="view" id="view-incidents" hidden>
+        <div class="panel">
+          <h3><span class="l">Incidents</span>
+            <span><label class="chk"><input type="checkbox" id="inc-all"> all regions</label></span></h3>
+          <div class="body" id="incidents-table"></div>
+        </div>
+      </div>
+
+      <div class="view" id="view-vessels" hidden>
+        <div class="panel">
+          <h3><span class="l">Vessels with real AIS positions</span>
+            <span><input class="btn" id="ves-q" placeholder="name / MMSI / IMO" style="font-weight:400">
+            <label class="chk"><input type="checkbox" id="ves-global"> outside AOI</label></span></h3>
+          <div class="body" id="vessels-table"></div>
+        </div>
+      </div>
+
+      <div class="view" id="view-map" hidden>
+        <div class="panel" id="map-host" style="min-height:640px"></div>
+      </div>
+
+      <div class="view" id="view-reports" hidden>
+        <div class="panel"><h3><span class="l">Reports</span>
+          <span><label class="chk"><input type="checkbox" id="rep-all"> all regions</label>
+          <button class="btn" id="rep-json">Export JSON</button>
+          <button class="btn" id="rep-csv">Export incidents CSV</button></span></h3>
+          <div class="body" id="reports-body"></div></div>
+      </div>
+
+      <div class="view" id="view-settings" hidden>
+        <div class="panel"><h3><span class="l">Settings &amp; data sources</span></h3>
+          <div class="body" id="settings-body"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<div id="job">
+  <h4 id="job-title">Working…</h4>
+  <div class="sub" id="job-sub"></div>
+  <div class="bar"><i id="job-bar"></i></div>
+  <div id="job-stages"></div>
+</div>
+<script src="/static/vendor/leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
