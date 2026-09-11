@@ -18,6 +18,20 @@ Everything runs on **free** data sources. No paid API, no GPU.
 
 ---
 
+## Documentation for the team
+
+Detailed, plain-language docs are in [`docs/`](docs/README.md):
+
+| | |
+|---|---|
+| [What is this?](docs/01-what-is-this.md) | the idea in plain words |
+| [Run it](docs/02-run-it.md) | getting it working |
+| [How it works](docs/03-how-it-works.md) | the science, step by step |
+| [Code tour](docs/04-code-tour.md) | what every file does |
+| [Data sources](docs/05-data-sources.md) | what is real, and what it costs |
+| [Viva questions](docs/06-viva-questions.md) | what examiners will ask |
+| [Troubleshooting](docs/07-troubleshooting.md) | when it breaks |
+
 ## Quick start
 
 ```bash
