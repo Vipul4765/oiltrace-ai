@@ -277,7 +277,11 @@ why each candidate region was kept or rejected.
 ### Tests
 
 ```bash
-.venv/bin/python tests/test_suite.py     # 56 checks, real data, no fixtures
+.venv/bin/python tests/test_suite.py   # 64 checks, real data, no fixtures
+.venv/bin/python tools/audit.py        # database + cross-region integrity
+.venv/bin/python tools/api_scan.py     # route matrix, response types
+.venv/bin/python tools/ui_test.py      # headless browser, JS console errors
+.venv/bin/python tools/xss_test.py     # hostile input through every renderer
 ```
 
 Runs against the live database and live APIs. The only synthetic input is the

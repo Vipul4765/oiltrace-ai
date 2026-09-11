@@ -118,6 +118,30 @@ Use the deployed site to prove it ships. **Demo locally.**
 
 ---
 
+## Security: never interpolate AIS text into HTML unescaped
+
+Vessel names, call signs and destinations come from **AIS, an open radio
+broadcast**. Anyone with a transmitter can put any string in those fields, and
+AIS spoofing happens in the wild.
+
+A vessel named `<img src=x onerror=...>` executed its payload in this dashboard
+before we fixed it. That is stored XSS, and the attacker is anyone with a VHF
+transmitter.
+
+**The rule:** anything that is not a number you computed goes through `esc()`
+before it touches `innerHTML`.
+
+```js
+el.innerHTML = `<b>${esc(v.name)}</b>`;   // correct
+el.innerHTML = `<b>${v.name}</b>`;        // vulnerable
+```
+
+Check it after any frontend change:
+
+```bash
+.venv/bin/python tools/xss_test.py     # exits non-zero if a renderer is unsafe
+```
+
 ## Rules for changing code
 
 1. **Never add fake data.** Not as a placeholder, not "temporarily". If a value
@@ -128,3 +152,5 @@ Use the deployed site to prove it ships. **Demo locally.**
 4. **When you fix something subtle, write down why** in a comment. Several
    fixes here look wrong until you know what failed before them.
 5. **Never commit `.env`.** It holds the API keys.
+6. **Escape untrusted text.** See the security section above. Run
+   `tools/xss_test.py` after any change to rendering code.

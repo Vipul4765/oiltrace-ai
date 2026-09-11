@@ -7,6 +7,23 @@ const S = { incident:null, drift:null, candidates:[], timeline:[], selected:null
             noCandReason:null };
 
 const $  = (id) => document.getElementById(id);
+
+/** Escape text before putting it in innerHTML.
+ *
+ *  This is not optional. Vessel names, call signs and destinations come from
+ *  AIS, which is an open radio broadcast - anyone with a transmitter can put
+ *  any string in those fields, and AIS spoofing is well documented. A vessel
+ *  named `<img src=x onerror=...>` executed its payload in this dashboard
+ *  before this existed.
+ *
+ *  Anything that did not originate as a number we computed goes through esc().
+ */
+function esc(v){
+  if(v === null || v === undefined) return "";
+  return String(v)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
 const fmt = (n, d=1) => (n===null||n===undefined||isNaN(n)) ? "--" : Number(n).toFixed(d);
 const TYPE_COLOR = { Tanker:"#dc2626", Cargo:"#2563eb", Fishing:"#059669",
                      Tug:"#7c3aed", Passenger:"#0891b2" };
@@ -39,7 +56,7 @@ async function api(path, opts){
 function toast(msg, kind = "", title = "", ms = 6000){
   const el = document.createElement("div");
   el.className = "toast " + kind;
-  el.innerHTML = `<span class="x">&times;</span>${title?`<b>${title}</b>`:""}${msg}`;
+  el.innerHTML = `<span class="x">&times;</span>${title?`<b>${esc(title)}</b>`:""}${esc(msg)}`;
   $("toasts").appendChild(el);
   requestAnimationFrame(() => el.classList.add("in"));
   const kill = () => {
@@ -65,7 +82,7 @@ function renderJob(j){
   $("job-sub").textContent = j.detail || j.label || "";
   $("job-bar").style.width = j.percent + "%";
   $("job-stages").innerHTML = (j.stages || []).map(st =>
-    `<div class="st ${st.state}"><span class="m">${MARK[st.state]}</span>${st.label}</div>`
+    `<div class="st ${esc(st.state)}"><span class="m">${MARK[st.state] || ""}</span>${esc(st.label)}</div>`
   ).join("");
 }
 function hideJob(delay = 900){
@@ -163,7 +180,7 @@ function drawIncident(){
   if(inc.polygon && inc.polygon.length > 2){
     L.polygon(toLatLngs(inc.polygon), { color:"#dc2626", weight:2,
       fillColor:"#f97316", fillOpacity:.55 })
-      .bindTooltip(`${inc.incident_id} &mdash; ${fmt(inc.area_km2)} km&sup2;`)
+      .bindTooltip(`${esc(inc.incident_id)} &mdash; ${fmt(inc.area_km2)} km&sup2;`)
       .addTo(layers.spill);
   }
   L.marker([inc.lat, inc.lon], { icon: L.divIcon({ className:"", iconSize:[26,26],
@@ -171,7 +188,7 @@ function drawIncident(){
       `<div style="width:26px;height:26px;border-radius:50%;background:#dc2626;
         border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45);display:grid;
         place-items:center;color:#fff;font-size:13px">&#9679;</div>` }) })
-    .bindPopup(`<b>${inc.incident_id}</b><br>${fmt(inc.lat,3)}&deg;N ${fmt(inc.lon,3)}&deg;E<br>
+    .bindPopup(`<b>${esc(inc.incident_id)}</b><br>${fmt(inc.lat,3)}&deg;N ${fmt(inc.lon,3)}&deg;E<br>
       ${fmt(inc.area_km2)} km&sup2; &middot; confidence ${Math.round(inc.confidence*100)}%`)
     .addTo(layers.spill);
 
@@ -199,7 +216,7 @@ async function refreshVessels(){
     const topMmsi = S.selected ? S.selected.mmsi : null;
     list.forEach(v => {
       L.marker([v.lat, v.lon], { icon: vesselIcon(v, v.mmsi===topMmsi) })
-        .bindTooltip(`<b>${v.name}</b><br>${v.vessel_type} &middot; MMSI ${v.mmsi}<br>
+        .bindTooltip(`<b>${esc(v.name)}</b><br>${esc(v.vessel_type)} &middot; MMSI ${esc(v.mmsi)}<br>
           ${fmt(v.sog)} kn &middot; ${fmt(v.cog,0)}&deg;<br>
           <span style="color:#94a3b8">${ago(v.ts)}</span>`)
         .addTo(layers.vessels);
@@ -253,14 +270,14 @@ function renderProvenance(p){
     <div class="lyr">
       <div class="t"><span class="led ${layer.real?"on":"off"}"></span>${title}</div>
       <div class="s">${layer.real ? "REAL" : "NO DATA"}</div>
-      <div class="n">${layer.source}${extra?" &middot; "+extra:""}</div>
+      <div class="n">${esc(layer.source)}${extra?" &middot; "+esc(extra):""}</div>
     </div>`;
   const ais = L.ais;
   const aisExtra = ais.positions ? `${ais.positions.toLocaleString()} positions` : "no data";
   $("banner-slot").innerHTML = `
     <div class="prov">
       <div class="prov-head">
-        <b>Data provenance &mdash; ${p.region.name}</b>
+        <b>Data provenance &mdash; ${esc(p.region.name)}</b>
         <span class="verdict ${p.fully_real?"v-real":"v-mixed"}">
           ${p.fully_real ? "FULLY REAL PIPELINE" : "MIXED &mdash; see AIS"}</span>
       </div>
@@ -272,7 +289,7 @@ function renderProvenance(p){
         ${cell("AIS tracks", ais, aisExtra)}
       </div>
       ${p.caveat ? `<div class="n" style="margin-top:9px;color:#b45309;font-size:11.5px">
-         &#9888; ${p.caveat}</div>` : ""}
+         &#9888; ${esc(p.caveat)}</div>` : ""}
     </div>`;
 }
 
@@ -281,7 +298,7 @@ function renderRegions(data){
   const sel = $("region-select");
   sel.innerHTML = data.regions.map(r => {
     const badge = {excellent:"AIS ****", good:"AIS ***", sparse:"AIS *", none:"no AIS"}[r.ais_live];
-    return `<option value="${r.key}" ${r.key===data.active?"selected":""}>${r.name} — ${badge}</option>`;
+    return `<option value="${r.key}" ${r.key===data.active?"selected":""}>${esc(r.name)} — ${badge}</option>`;
   }).join("");
   sel.onchange = async () => {
     sel.disabled = true;
@@ -325,11 +342,11 @@ function renderIncident(){
   st.className = "pill" + (inc.status === "Confirmed" ? "" : "");
   const kv = (k,v) => `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`;
   $("incident-body").innerHTML =
-    kv("Incident ID", inc.incident_id) +
+    kv("Incident ID", esc(inc.incident_id)) +
     kv("Detected On", utc(inc.detected_at)) +
     kv("Location", `${fmt(Math.abs(inc.lat),2)}&deg; ${inc.lat>=0?"N":"S"}, `
        + `${fmt(Math.abs(inc.lon),2)}&deg; ${inc.lon>=0?"E":"W"}`
-       + `${inc.region_name ? " ("+inc.region_name+")" : ""}`) +
+       + `${inc.region_name ? " ("+esc(inc.region_name)+")" : ""}`) +
     `<div class="sec-title">Spill Characteristics</div>` +
     kv("Area", `${fmt(inc.area_km2)} km&sup2;`) +
     kv("Length &times; Width", `${fmt(inc.length_km)} km &times; ${fmt(inc.width_km)} km`) +
@@ -339,7 +356,7 @@ function renderIncident(){
     `<div class="kv"><div class="k">Detection Confidence</div>
       <div class="v">${Math.round(inc.confidence*100)}%</div>
       <div class="meter"><i style="width:${Math.round(inc.confidence*100)}%"></i></div></div>` +
-    kv("Source Scene", `<span style="font-size:11.5px;font-family:ui-monospace,monospace">${inc.scene_id||"&mdash;"}</span>`);
+    kv("Source Scene", `<span style="font-size:11.5px;font-family:ui-monospace,monospace">${esc(inc.scene_id)||"&mdash;"}</span>`);
 }
 
 function scoreClass(s){ return s >= .75 ? "s-hi" : s >= .5 ? "s-md" : "s-lo"; }
@@ -351,7 +368,7 @@ function renderCandidates(){
     el.innerHTML = `<div class="empty" style="text-align:left;padding:18px 4px">
       <div style="font-weight:650;color:#475569;margin-bottom:7px">
         No candidate vessels</div>
-      <div style="line-height:1.6">${S.noCandReason
+      <div style="line-height:1.6">${esc(S.noCandReason)
         || "Attribution has not run for this incident yet."}</div>
       <div style="margin-top:11px;color:#cbd5e1">This box stays empty rather than
         showing a guess. A vessel appears here only when real AIS places it in the
@@ -362,8 +379,8 @@ function renderCandidates(){
   el.innerHTML = S.candidates.map(c => `
     <div class="cand ${S.selected && S.selected.mmsi===c.mmsi ? "sel":""}" data-mmsi="${c.mmsi}">
       <div class="rank">${c.rank}</div>
-      <div class="nm"><b>${c.name}</b>
-        <span>${c.imo ? "IMO "+c.imo : "MMSI "+c.mmsi} &middot; ${c.vessel_type}</span></div>
+      <div class="nm"><b>${esc(c.name)}</b>
+        <span>${c.imo ? "IMO "+esc(c.imo) : "MMSI "+esc(c.mmsi)} &middot; ${esc(c.vessel_type)}</span></div>
       <div class="score ${scoreClass(c.score)}">${Math.round(c.score*100)}%</div>
     </div>`).join("");
   el.querySelectorAll(".cand").forEach(n => n.onclick = () => selectCandidate(+n.dataset.mmsi));
@@ -386,24 +403,24 @@ function renderWhy(){
   $("why").innerHTML =
     `<div style="font-size:12px;color:#64748b;margin:2px 0 9px">
        Overall score <b style="color:#0f172a;font-size:14px">${Math.round(c.score*100)}%</b>
-       &middot; ${c.vessel_type}${c.length_m ? " &middot; "+Math.round(c.length_m)+" m LOA" : ""}</div>
+       &middot; ${esc(c.vessel_type)}${c.length_m ? " &middot; "+Math.round(c.length_m)+" m LOA" : ""}</div>
      <div class="bars">${bars}</div>
-     <div style="margin-top:12px">${(c.evidence||[]).map(e => `<div class="ev">${e}</div>`).join("")}</div>`;
+     <div style="margin-top:12px">${(c.evidence||[]).map(e => `<div class="ev">${esc(e)}</div>`).join("")}</div>`;
 }
 
 function renderTimeline(){
   const el = $("timeline");
   if(!S.timeline.length){ el.innerHTML = '<div class="empty">&mdash;</div>'; return; }
   el.innerHTML = S.timeline.map(t => `
-    <div class="step"><b>${t.stage}</b>
-      <span>${utc(t.ts)}${t.detail ? " &middot; "+t.detail : ""}</span></div>`).join("");
+    <div class="step"><b>${esc(t.stage)}</b>
+      <span>${utc(t.ts)}${t.detail ? " &middot; "+esc(t.detail) : ""}</span></div>`).join("");
 }
 
 function renderAlerts(list){
   const color = { detection:"#dc2626", ranking:"#2563eb", status:"#10b981" };
   $("alerts").innerHTML = list.length ? list.map(a => `
     <div class="alert"><div class="bullet" style="background:${color[a.kind]||"#f59e0b"}"></div>
-      <div style="flex:1"><div>${a.message}</div><time>${utc(a.ts)}</time></div></div>`).join("")
+      <div style="flex:1"><div>${esc(a.message)}</div><time>${utc(a.ts)}</time></div></div>`).join("")
     : '<div class="empty">No alerts</div>';
 }
 
@@ -518,7 +535,7 @@ async function renderIncidentsTable(){
   el.innerHTML = '<div class="empty">Loading…</div>';
   let rows;
   try{ rows = await api(`/api/incidents?limit=200${all?"&region=all":""}`); }
-  catch(e){ el.innerHTML = `<div class="empty">Failed: ${e.message}</div>`; return; }
+  catch(e){ el.innerHTML = `<div class="empty">Failed: ${esc(e.message)}</div>`; return; }
   if(!rows.length){
     el.innerHTML = `<div class="empty">No incidents${all?"":" in this region"}.
       Press <b>Fetch Sentinel-1</b> to analyse a real satellite scene.</div>`;
@@ -530,15 +547,15 @@ async function renderIncidentsTable(){
       <th class="num">Vessels</th><th>Top candidate</th><th>Status</th>
     </tr></thead><tbody>${rows.map(r => `
       <tr data-id="${r.incident_id}">
-        <td><b>${r.incident_id}</b><div class="mono" style="color:#94a3b8">${(r.scene_id||"").slice(0,30)}</div></td>
+        <td><b>${esc(r.incident_id)}</b><div class="mono" style="color:#94a3b8">${esc((r.scene_id||"").slice(0,30))}</div></td>
         <td>${utc(r.detected_at)}</td>
-        <td><span class="btag">${r.region || "—"}</span></td>
+        <td><span class="btag">${esc(r.region) || "—"}</span></td>
         <td class="mono">${fmt(Math.abs(r.lat),3)}${r.lat>=0?"N":"S"} ${fmt(Math.abs(r.lon),3)}${r.lon>=0?"E":"W"}</td>
         <td class="num">${fmt(r.area_km2)}</td>
         <td class="num">${Math.round((r.confidence||0)*100)}%</td>
         <td class="num">${r.candidate_count||0}</td>
-        <td>${r.top_vessel ? `${r.top_vessel} <b>${Math.round((r.top_score||0)*100)}%</b>` : "—"}</td>
-        <td><span class="btag">${r.status}</span></td>
+        <td>${r.top_vessel ? `${esc(r.top_vessel)} <b>${Math.round((r.top_score||0)*100)}%</b>` : "—"}</td>
+        <td><span class="btag">${esc(r.status)}</span></td>
       </tr>`).join("")}</tbody></table>`;
   el.querySelectorAll("tbody tr").forEach(tr => tr.onclick = async () => {
     await loadIncident(tr.dataset.id); showView("dashboard");
@@ -555,7 +572,7 @@ async function renderVesselsTable(){
   try{
     rows = await api(`/api/vessels?limit=500&hours=168&in_aoi=${inAoi}`
                      + (q ? `&q=${encodeURIComponent(q)}` : ""));
-  }catch(e){ el.innerHTML = `<div class="empty">Failed: ${e.message}</div>`; return; }
+  }catch(e){ el.innerHTML = `<div class="empty">Failed: ${esc(e.message)}</div>`; return; }
   if(!rows.length){
     el.innerHTML = `<div class="empty">No vessels with real AIS positions here.
       ${S.prov && !S.prov.layers.ais.real ? "This region has no live AIS coverage — try Fetch GFW in Settings, or switch region." : ""}</div>`;
@@ -568,10 +585,10 @@ async function renderVesselsTable(){
       <th class="num">Fixes</th><th class="num">Avg kn</th><th>Last seen</th>
     </tr></thead><tbody>${rows.map(v => `
       <tr data-mmsi="${v.mmsi}">
-        <td><b>${v.name}</b>${v.callsign?` <span style="color:#94a3b8">${v.callsign}</span>`:""}</td>
-        <td class="mono">${v.mmsi}</td>
-        <td class="mono">${v.imo || "—"}</td>
-        <td><span class="btag" style="background:${typeColor(v.vessel_type)}1a;color:${typeColor(v.vessel_type)}">${v.vessel_type}</span></td>
+        <td><b>${esc(v.name)}</b>${v.callsign?` <span style="color:#94a3b8">${esc(v.callsign)}</span>`:""}</td>
+        <td class="mono">${esc(v.mmsi)}</td>
+        <td class="mono">${esc(v.imo) || "—"}</td>
+        <td><span class="btag" style="background:${typeColor(v.vessel_type)}1a;color:${typeColor(v.vessel_type)}">${esc(v.vessel_type)}</span></td>
         <td class="num">${v.fixes}</td>
         <td class="num">${v.avg_sog!=null?fmt(v.avg_sog):"—"}</td>
         <td>${ago(v.last_seen)}</td>
@@ -589,7 +606,7 @@ async function showVesselTrack(mmsi){
     L.polyline(pts, { color:"#111827", weight:3, opacity:.9 }).addTo(layers.track);
     L.circleMarker(pts[pts.length-1], { radius:6, color:"#fff", weight:2,
       fillColor:"#dc2626", fillOpacity:1 })
-      .bindTooltip(`<b>${d.vessel.name || mmsi}</b><br>${d.track.length} real fixes`)
+      .bindTooltip(`<b>${esc(d.vessel.name || mmsi)}</b><br>${d.track.length} real fixes`)
       .addTo(layers.track);
     showView("map");
     moveMap(L.latLngBounds(pts), 0.2);
@@ -603,16 +620,16 @@ async function renderReports(){
   let r;
   try{ r = await api("/api/reports/summary?days=365"
                      + ($("rep-all").checked ? "&region=all" : "")); }
-  catch(e){ el.innerHTML = `<div class="empty">Failed: ${e.message}</div>`; return; }
+  catch(e){ el.innerHTML = `<div class="empty">Failed: ${esc(e.message)}</div>`; return; }
   S.report = r;
   const rows = (list, k, v) => list.length
-    ? list.map(x => `<div class="srow"><span>${x[k] ?? "—"}</span><b>${x[v]}</b></div>`).join("")
+    ? list.map(x => `<div class="srow"><span>${esc(x[k] ?? "—")}</span><b>${esc(x[v])}</b></div>`).join("")
     : '<div class="srow"><span style="color:#94a3b8">no data</span></div>';
   const ais = r.ais || {};
   el.innerHTML = `<div class="rep-grid">
       <div class="rep-card"><h4>Incidents by region</h4>
         ${(r.by_region||[]).length ? r.by_region.map(x => `<div class="srow">
-          <span>${x.region}</span><b>${x.n} · avg ${x.avg_area??"—"} km² · conf ${Math.round((x.avg_conf||0)*100)}%</b>
+          <span>${esc(x.region)}</span><b>${x.n} · avg ${x.avg_area??"—"} km² · conf ${Math.round((x.avg_conf||0)*100)}%</b>
         </div>`).join("") : '<div class="srow"><span style="color:#94a3b8">no incidents yet</span></div>'}</div>
       <div class="rep-card"><h4>By status</h4>${rows(r.by_status||[], "status", "n")}</div>
       <div class="rep-card"><h4>Detection confidence</h4>${rows(r.confidence_bands||[], "band", "n")}</div>
@@ -625,12 +642,12 @@ async function renderReports(){
     <div class="rep-card" style="margin-top:14px"><h4>Satellite scenes analysed</h4>
       ${(r.recent_scenes||[]).length ? `<table class="dt"><thead><tr>
         <th>Scene</th><th>Acquired (UTC)</th><th class="num">Detections</th></tr></thead>
-        <tbody>${r.recent_scenes.map(x => `<tr><td class="mono">${x.scene_id}</td>
+        <tbody>${r.recent_scenes.map(x => `<tr><td class="mono">${esc(x.scene_id)}</td>
           <td>${utc(x.acquired)}</td><td class="num">${x.detections}</td></tr>`).join("")}
         </tbody></table>` : '<div class="srow"><span style="color:#94a3b8">no scenes analysed yet</span></div>'}
     </div>
     <div class="note" style="padding:12px 2px 0">Scope:
-      <b>${r.region === "all" ? "all regions" : r.region}</b>. Every figure above
+      <b>${r.region === "all" ? "all regions" : esc(r.region)}</b>. Every figure above
       is a COUNT or AVG over stored records. Nothing here is estimated or
       filled in.</div>`;
 }
@@ -653,21 +670,21 @@ async function renderSettings(){
   const yn = (b) => b ? '<b style="color:#047857">yes</b>' : '<b style="color:#b45309">no</b>';
   el.innerHTML = `<div class="rep-grid">
       <div class="rep-card"><h4>Area of interest</h4>
-        <div class="srow"><span>Region</span><b>${prov.region.name}</b></div>
-        <div class="srow"><span>Key</span><b class="mono">${prov.region.key}</b></div>
+        <div class="srow"><span>Region</span><b>${esc(prov.region.name)}</b></div>
+        <div class="srow"><span>Key</span><b class="mono">${esc(prov.region.key)}</b></div>
         <div class="srow"><span>Latitude</span><b class="mono">${prov.region.lat_min} … ${prov.region.lat_max}</b></div>
         <div class="srow"><span>Longitude</span><b class="mono">${prov.region.lon_min} … ${prov.region.lon_max}</b></div>
         <div class="srow"><span>Live AIS coverage</span><b>${prov.region.ais_live}</b></div>
-        <div class="note" style="padding:8px 0 0">${prov.region.ais_note}</div></div>
+        <div class="note" style="padding:8px 0 0">${esc(prov.region.ais_note)}</div></div>
 
       <div class="rep-card"><h4>AIS collector</h4>
-        <div class="srow"><span>Mode</span><b>${ais.source}</b></div>
+        <div class="srow"><span>Mode</span><b>${esc(ais.source)}</b></div>
         <div class="srow"><span>Connected</span>${yn(c.connected)}</div>
         <div class="srow"><span>Messages received</span><b>${(c.messages_received||0).toLocaleString()}</b></div>
         <div class="srow"><span>Positions stored</span><b>${(c.positions_stored||0).toLocaleString()}</b></div>
         <div class="srow"><span>Throttled (rate limit)</span><b>${(c.throttled||0).toLocaleString()}</b></div>
         <div class="srow"><span>Reconnects</span><b>${c.reconnects||0}</b></div>
-        ${c.last_error?`<div class="note" style="padding:8px 0 0;color:#b45309">${c.last_error}</div>`:""}</div>
+        ${c.last_error?`<div class="note" style="padding:8px 0 0;color:#b45309">${esc(c.last_error)}</div>`:""}</div>
 
       <div class="rep-card"><h4>Extra data sources</h4>
         <div class="srow"><span>Global Fishing Watch token</span>${yn(opt.global_fishing_watch?.configured)}</div>
@@ -686,7 +703,7 @@ async function renderSettings(){
     try{
       const r = await api("/api/ingest/gfw?days=60", { method:"POST" });
       $("set-out").innerHTML = `Stored <b>${r.positions_stored}</b> real fixes from
-        <b>${r.vessels}</b> vessels (${r.rows_returned} rows).<br>${r.limitation}`;
+        <b>${r.vessels}</b> vessels (${r.rows_returned} rows).<br>${esc(r.limitation)}`;
       toast(`${r.positions_stored} fixes from ${r.vessels} vessels.`,
             "ok", "Global Fishing Watch");
       await loadAll();
@@ -703,7 +720,7 @@ async function renderSettings(){
       const list = await api("/api/sentinel1/scenes?days=45");
       $("set-out").innerHTML = list.length
         ? `<b>${list.length}</b> real scenes over this AOI:<br>` + list.slice(0,8).map(x =>
-            `<span class="mono">${x.datetime.slice(0,16)} · ${x.orbit_state} · ${x.id.slice(0,44)}</span>`).join("<br>")
+            `<span class="mono">${esc(x.datetime.slice(0,16))} · ${esc(x.orbit_state)} · ${esc(x.id.slice(0,44))}</span>`).join("<br>")
         : "No Sentinel-1 IW scenes here in the last 45 days.";
     }catch(err){
       $("set-out").textContent = "";

@@ -186,6 +186,9 @@ Everything else. Key pieces:
 - `runJob()` — polls a real backend job. The progress bar only moves when the
   server reports a stage that actually started. **There is no timer-driven
   animation.**
+- `esc()` — HTML escaping. **Not optional.** AIS names are attacker-controlled
+  and reach `innerHTML` in ~40 places; a vessel named `<img src=x onerror=...>`
+  executed its payload before this existed.
 - `renderProvenance()` — the honesty strip along the top.
 - `moveMap()` — animates only when the map is visible. Animating a hidden map
   gives it zero size and Leaflet throws `Invalid LatLng (NaN, NaN)`.
@@ -204,6 +207,7 @@ demo you lose map tiles, not the whole application.
 | `tools/audit.py` | database integrity, cross-region consistency |
 | `tools/api_scan.py` | every route, parameter matrix, response types |
 | `tools/ui_test.py` | drives the real page in Chrome, catches JS errors |
+| `tools/xss_test.py` | feeds hostile strings to every renderer, asserts escaping |
 
 Run all four before pushing. They exist because each one caught a real bug that
 code review missed.
