@@ -232,8 +232,45 @@ def get_incident(incident_id: str) -> dict:
         "SELECT ts, stage, detail FROM incident_timeline WHERE incident_id=?"
         " ORDER BY ts", (incident_id,)))
 
+    # When there are no candidates, say WHY. A bare "none" looks like a bug and
+    # invites someone to "fix" it by inventing vessels. The honest reasons are
+    # specific and worth surfacing.
+    reason = None
+    if not cands:
+        region = config.active_region()
+        window_start = inc["detected_at"] - config.DRIFT_MAX_HOURS * 3600
+        in_window = db.query_one(
+            "SELECT COUNT(*) c FROM ais_positions WHERE ts BETWEEN ? AND ?",
+            (window_start, inc["detected_at"]))["c"]
+        held = db.query_one("SELECT COUNT(*) c, MIN(ts) oldest FROM ais_positions")
+        fmt = "%d %b %Y %H:%M UTC"
+        win = (f"{time.strftime(fmt, time.gmtime(window_start))} to "
+               f"{time.strftime(fmt, time.gmtime(inc['detected_at']))}")
+        if region.ais_live == "none" and not held["c"]:
+            reason = ("No AIS coverage for this region. Free live AIS has no "
+                      "receivers here - load Global Fishing Watch data, or "
+                      "switch to a region with coverage.")
+        elif not held["c"]:
+            reason = "No AIS has been collected yet."
+        elif in_window == 0 and held["oldest"] > window_start:
+            reason = (f"AIS history does not reach back far enough. Attribution "
+                      f"needs vessel positions from {win}, but the earliest "
+                      f"stored fix is "
+                      f"{time.strftime(fmt, time.gmtime(held['oldest']))}.")
+        elif in_window == 0:
+            # History predates the window, so this is a gap, not a short history.
+            reason = (f"No AIS was recorded during {win}, the window attribution "
+                      f"needs. There are {held['c']:,} fixes in the database, but "
+                      f"none in that period - the collector was not running then. "
+                      f"Pair this scene with an archived AIS day for the same "
+                      f"date, or run the collector continuously.")
+        else:
+            reason = (f"{in_window:,} AIS fixes fall in the drift window, but no "
+                      f"vessel passed within {config.CANDIDATE_RADIUS_KM:.0f} km "
+                      f"of the back-drifted source region.")
+
     return {"incident": inc, "drift": drift, "candidates": cands,
-            "timeline": timeline}
+            "timeline": timeline, "no_candidates_reason": reason}
 
 
 @app.post("/api/incidents/{incident_id}/attribute")

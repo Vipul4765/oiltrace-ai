@@ -3,7 +3,8 @@
 
 const S = { incident:null, drift:null, candidates:[], timeline:[], selected:null,
             aoi:null, vesselTimer:null, health:null, regions:[], prov:null,
-            view:"dashboard", report:null, pendingBounds:null };
+            view:"dashboard", report:null, pendingBounds:null,
+            noCandReason:null };
 
 const $  = (id) => document.getElementById(id);
 const fmt = (n, d=1) => (n===null||n===undefined||isNaN(n)) ? "--" : Number(n).toFixed(d);
@@ -345,7 +346,18 @@ function scoreClass(s){ return s >= .75 ? "s-hi" : s >= .5 ? "s-md" : "s-lo"; }
 
 function renderCandidates(){
   const el = $("candidates");
-  if(!S.candidates.length){ el.innerHTML = '<div class="empty">No candidate vessels</div>'; return; }
+  if(!S.candidates.length){
+    $("cand-count").textContent = "";
+    el.innerHTML = `<div class="empty" style="text-align:left;padding:18px 4px">
+      <div style="font-weight:650;color:#475569;margin-bottom:7px">
+        No candidate vessels</div>
+      <div style="line-height:1.6">${S.noCandReason
+        || "Attribution has not run for this incident yet."}</div>
+      <div style="margin-top:11px;color:#cbd5e1">This box stays empty rather than
+        showing a guess. A vessel appears here only when real AIS places it in the
+        back-drifted source region.</div></div>`;
+    return;
+  }
   $("cand-count").textContent = `${S.candidates.length} scored`;
   el.innerHTML = S.candidates.map(c => `
     <div class="cand ${S.selected && S.selected.mmsi===c.mmsi ? "sel":""}" data-mmsi="${c.mmsi}">
@@ -706,6 +718,7 @@ async function loadIncident(id){
   const d = await api(`/api/incidents/${id}`);
   S.incident = d.incident; S.drift = d.drift;
   S.candidates = d.candidates || []; S.timeline = d.timeline || [];
+  S.noCandReason = d.no_candidates_reason || null;
   S.selected = S.candidates[0] || null;
   renderIncident(); renderCandidates(); renderTimeline(); renderEnv();
   renderWhy(); renderMiniDrift(); drawIncident(); drawTrack(S.selected);
