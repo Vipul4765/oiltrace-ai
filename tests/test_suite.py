@@ -236,6 +236,36 @@ def test_dedupe() -> None:
         check("a genuinely different location is NOT merged", far is None)
 
 
+def test_region_stamping() -> None:
+    """An incident belongs to the region it was detected in, not the one the UI
+    happened to be showing. Background ingests and explicit bboxes both broke
+    this before region_for() derived it from the coordinates."""
+    print("\nregion stamping")
+    from backend import pipeline
+    from backend import regions as regmod
+    for key, r in regmod.REGIONS.items():
+        lat = (r.lat_min + r.lat_max) / 2
+        lon = (r.lon_min + r.lon_max) / 2
+        got = pipeline.region_for(lat, lon)
+        got_r = regmod.get(got)
+        inside = (got_r.lat_min <= lat <= got_r.lat_max
+                  and got_r.lon_min <= lon <= got_r.lon_max)
+        check(f"centre of {key} maps to a region containing it", inside, got)
+
+    before = config.ACTIVE_REGION
+    config.set_region("mumbai")
+    got = pipeline.region_for(28.6, -88.9)          # physically the Gulf
+    check("a Gulf coordinate is not stamped 'mumbai' just because it is active",
+          got == "gulf-of-mexico", got)
+    config.set_region(before)
+
+    mismatched = [r["incident_id"] for r in db.query(
+        "SELECT incident_id, region, lat, lon FROM incidents")
+        if pipeline.region_for(r["lat"], r["lon"]) != r["region"]]
+    check("every stored incident is stamped with the region containing it",
+          not mismatched, f"{len(mismatched)} mismatched")
+
+
 # --- config ------------------------------------------------------------------
 def test_config() -> None:
     print("\nconfig & regions")
@@ -256,7 +286,8 @@ def test_config() -> None:
 def main() -> int:
     print("OilTrace AI - test suite (real data, no fixtures)")
     for fn in (test_geo, test_db, test_vessel_types, test_config,
-               test_detector, test_landmask, test_ranking, test_dedupe):
+               test_detector, test_landmask, test_ranking, test_dedupe,
+               test_region_stamping):
         try:
             fn()
         except Exception as exc:

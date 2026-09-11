@@ -21,6 +21,22 @@ def next_incident_id() -> str:
     return f"OTA-{year}-{seq:04d}"
 
 
+def region_for(lat: float, lon: float) -> str:
+    """Which configured region physically contains this point?
+
+    An incident must be stamped with the region it was DETECTED in, not
+    whatever region the UI happened to be showing when the row was written.
+    Two ways that went wrong: a background ingest running while someone
+    switched region, and an explicit `bbox` pointing somewhere other than the
+    active AOI (which is exactly what the archive-pairing demo does).
+    """
+    from backend import regions as _reg
+    for r in _reg.REGIONS.values():
+        if r.lat_min <= lat <= r.lat_max and r.lon_min <= lon <= r.lon_max:
+            return r.key
+    return config.ACTIVE_REGION
+
+
 def _existing_incident(scene_id: str, lat: float, lon: float,
                        radius_km: float = 1.5) -> str | None:
     """Has this scene already produced a detection at essentially this spot?
@@ -42,6 +58,7 @@ def _existing_incident(scene_id: str, lat: float, lon: float,
 def create_incident(det: darkspot.Detection, detected_at: float,
                     scene_id: str = "", source: str = "sar") -> str:
     lat0, lon0 = det.centroid
+    region = region_for(lat0, lon0)
     existing = _existing_incident(scene_id, lat0, lon0)
     if existing:
         # Same scene, same place: refresh the measurements in place. Detector
@@ -54,7 +71,7 @@ def create_incident(det: darkspot.Detection, detected_at: float,
                 " polygon=?, region=? WHERE incident_id=?",
                 (lat0, lon0, det.area_km2, det.length_km, det.width_km,
                  vmin0, vmax0, det.confidence, db.jdump(det.ring),
-                 config.ACTIVE_REGION, existing))
+                 region, existing))
         return existing
 
     iid = next_incident_id()
@@ -69,7 +86,7 @@ def create_incident(det: darkspot.Detection, detected_at: float,
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (iid, detected_at, lat, lon, det.area_km2, det.length_km, det.width_km,
              vmin, vmax, det.confidence, "Under Investigation",
-             db.jdump(det.ring), scene_id, source, config.ACTIVE_REGION, now))
+             db.jdump(det.ring), scene_id, source, region, now))
         # Real clock only. detected_at is the satellite acquisition time from
         # the scene metadata; `now` is when this process actually ran. Earlier
         # versions wrote invented offsets here (+45 min, +90 min...) purely to
